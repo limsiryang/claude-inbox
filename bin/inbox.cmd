@@ -1,5 +1,5 @@
 @echo off
-rem 收件匣指令入口（Windows）：plugin 啟用時 Claude Code 會把 bin\ 放進 PATH。
+rem Inbox command entry point (Windows): Claude Code puts bin\ on PATH when the plugin is enabled.
 setlocal
 set "SCRIPT=%~dp0..\inbox\inbox.py"
 set "PY="

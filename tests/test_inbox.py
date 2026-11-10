@@ -1,4 +1,4 @@
-"""收件匣單元測試：python3 -m unittest discover tests"""
+"""Inbox unit tests: python3 -m unittest discover tests"""
 import io
 import json
 import os
@@ -19,8 +19,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'inbox'))
 import inbox  # noqa: E402
 
-POSIX_MODES = os.name != 'nt'  # Windows 不套用 POSIX 權限位元，st_mode 一律是 0o666/0o777
-REAL_ENSURE_SERVER = inbox.ensure_server  # Base 會把它換成替身，這裡先留一份真的
+POSIX_MODES = os.name != 'nt'  # Windows ignores POSIX mode bits; st_mode is always 0o666/0o777
+REAL_ENSURE_SERVER = inbox.ensure_server  # Base swaps in a stub, so keep the real one here
 
 
 def free_port():
@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
     def ask(self, *argv):
         with redirect_stdout(io.StringIO()) as out:
             inbox.main(['ask'] + list(argv))
-        return out.getvalue().split('已放進收件匣：')[1].split()[0]
+        return out.getvalue().split('Added to inbox: ')[1].split()[0]
 
     def answer(self, qid, choice='A', text=''):
         questions = {q['id']: q for q in inbox.load_questions()}
@@ -69,7 +69,7 @@ class Base(unittest.TestCase):
 
 class AskAndAnswer(Base):
     def test_ask_writes_question_with_session_and_project(self):
-        qid = self.ask('--title', '要哪個？', '--option', 'A=甲', '--option', 'B=乙', '--recommend', 'B')
+        qid = self.ask('--title', 'Which one?', '--option', 'A=first', '--option', 'B=second', '--recommend', 'B')
         q = inbox.load_questions()[0]
         self.assertEqual(q['id'], qid)
         self.assertEqual(q['session'], 'sess-1')
@@ -80,10 +80,10 @@ class AskAndAnswer(Base):
         with self.assertRaises(SystemExit):
             self.ask('--title', 't', '--option', 'A')
         with self.assertRaises(SystemExit):
-            self.ask('--title', 't', '--option', 'A=甲', '--recommend', 'Z')
+            self.ask('--title', 't', '--option', 'A=first', '--recommend', 'Z')
 
     def test_validate_rejects_unknown_choice_empty_answer_and_long_text(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         qs = {q['id']: q for q in inbox.load_questions()}
         for bad in ({'question_id': qid, 'choice': 'Z'}, {'question_id': qid},
                     {'question_id': qid, 'text': 'x' * 4001}, {'question_id': 'nope', 'choice': 'A'}):
@@ -91,7 +91,7 @@ class AskAndAnswer(Base):
                 inbox.validate_answers({'answers': [bad]}, qs)
 
     def test_info_question_only_accepts_ack(self):
-        qid = self.ask('--info', '--title', '知會')
+        qid = self.ask('--info', '--title', 'heads up')
         qs = {q['id']: q for q in inbox.load_questions()}
         self.assertEqual(inbox.validate_answers({'answers': [{'question_id': qid}]}, qs)[0]['choice'], 'ack')
         with self.assertRaises(ValueError):
@@ -100,45 +100,45 @@ class AskAndAnswer(Base):
 
 class Delivery(Base):
     def test_answer_goes_to_asking_session_once(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
-        self.answer(qid, 'A', '補充')
-        self.assertEqual(inbox.take('sess-2', str(self.project)), [])  # 別的 session 拿不到
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        self.answer(qid, 'A', 'some notes')
+        self.assertEqual(inbox.take('sess-2', str(self.project)), [])  # another session can't have it
         pairs = inbox.take('sess-1', str(self.project))
         self.assertEqual(len(pairs), 1)
-        self.assertIn('使用者選：A 甲', inbox.format_answers(pairs))
-        self.assertIn('補充：補充', inbox.format_answers(pairs))
-        self.assertEqual(inbox.take('sess-1', str(self.project)), [])  # 只送一次
+        self.assertIn('User chose: A first', inbox.format_answers(pairs))
+        self.assertIn('Notes: some notes', inbox.format_answers(pairs))
+        self.assertEqual(inbox.take('sess-1', str(self.project)), [])  # delivered only once
 
     def test_asking_session_gets_answer_even_from_another_directory(self):
         sub_dir = self.project / 'a' / 'b'
         sub_dir.mkdir(parents=True)
-        os.chdir(sub_dir)  # 非 git 資料夾：出題與 hook 的 cwd 不同，專案根就不同
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        os.chdir(sub_dir)  # Not a git folder: ask and hook run from different cwds, so different project roots
+        qid = self.ask('--title', 't', '--option', 'A=first')
         self.answer(qid)
         self.assertEqual(len(inbox.take('sess-1', str(self.project))), 1)
 
     def test_other_project_cannot_take_over_even_old_answers_or_empty_sessions(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         event = self.answer(qid)
         other = Path(self.tmp.name) / 'other'
         other.mkdir()
         later = datetime.fromisoformat(event['at']).timestamp() + inbox.ORPHAN_SECONDS + 1
         with mock.patch.object(inbox.time, 'time', return_value=later):
-            self.assertEqual(inbox.take('sess-2', str(other)), [])  # 過了 30 分鐘也只限同專案
+            self.assertEqual(inbox.take('sess-2', str(other)), [])  # even after 30 min, same project only
         with mock.patch.dict(os.environ, {'CLAUDE_CODE_SESSION_ID': ''}):
-            anon = self.ask('--title', '匿名', '--option', 'A=甲')
+            anon = self.ask('--title', 'anonymous', '--option', 'A=first')
         self.answer(anon)
-        self.assertEqual(inbox.take('', str(other)), [])  # 空 session 對空 session 不算同一個
+        self.assertEqual(inbox.take('', str(other)), [])  # empty session != empty session
 
     def test_other_project_never_gets_it(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         self.answer(qid)
         other = Path(self.tmp.name) / 'other'
         other.mkdir()
-        self.assertEqual(inbox.take('sess-2', str(other)), [])  # 別的專案、別的 session
+        self.assertEqual(inbox.take('sess-2', str(other)), [])  # different project, different session
 
     def test_orphan_answer_goes_to_same_project_after_30_minutes(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         event = self.answer(qid)
         self.assertEqual(inbox.take('sess-2', str(self.project)), [])
         later = datetime.fromisoformat(event['at']).timestamp() + inbox.ORPHAN_SECONDS + 1
@@ -146,23 +146,23 @@ class Delivery(Base):
             self.assertEqual(len(inbox.take('sess-2', str(self.project))), 1)
 
     def test_hook_reads_stdin_and_prints_answers(self):
-        qid = self.ask('--title', '問題標題', '--option', 'A=甲')
+        qid = self.ask('--title', 'question title', '--option', 'A=first')
         self.answer(qid)
         stdin = io.StringIO(json.dumps({'session_id': 'sess-1', 'cwd': str(self.project)}))
         with mock.patch.object(sys, 'stdin', stdin), redirect_stdout(io.StringIO()) as out:
             inbox.main(['hook'])
-        self.assertIn('問題標題', out.getvalue())
+        self.assertIn('question title', out.getvalue())
         with mock.patch.object(sys, 'stdin', io.StringIO('{}')), redirect_stdout(io.StringIO()) as out:
             inbox.main(['hook'])
-        self.assertEqual(out.getvalue(), '')  # 沒有新回覆時什麼都不印
+        self.assertEqual(out.getvalue(), '')  # prints nothing when there are no new replies
 
     def test_close_hides_question_from_list(self):
-        qid = self.ask('--title', '要收的題')
+        qid = self.ask('--title', 'item to close')
         with redirect_stdout(io.StringIO()):
             inbox.main(['close', qid])
         with redirect_stdout(io.StringIO()) as out:
             inbox.main(['list'])
-        self.assertNotIn('要收的題', out.getvalue())
+        self.assertNotIn('item to close', out.getvalue())
         self.assertTrue(inbox.build_state()['questions'][0]['closed'])
 
 
@@ -187,7 +187,7 @@ class Server(Base):
             return e.code, e.read().decode()
 
     def test_answer_round_trip(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         port = self.start()
         self.assertEqual(self.req(port, '/')[0], 200)
         code, body = self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'A'}]})
@@ -196,7 +196,7 @@ class Server(Base):
         self.assertEqual(state['questions'][0]['answers'][0]['choice'], 'A')
 
     def test_bad_host_origin_and_invalid_answer_rejected(self):
-        qid = self.ask('--title', 't', '--option', 'A=甲')
+        qid = self.ask('--title', 't', '--option', 'A=first')
         port = self.start()
         self.assertEqual(self.req(port, '/api/state', headers={'Host': 'evil.example:80'})[0], 403)
         self.assertEqual(self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'A'}]},
@@ -249,9 +249,9 @@ class Server(Base):
             with mock.patch.object(inbox, 'ensure_server', REAL_ENSURE_SERVER):
                 self.assertTrue(inbox.ensure_server(config))
             log = (Path(os.environ['CLAUDE_INBOX_HOME']) / 'server.log').read_text(encoding='utf-8')
-            self.assertIn('收件匣服務已啟動', log)
+            self.assertIn('Inbox server started', log)
             self.assertNotIn(config['token'], log)
-        finally:  # 必須在測試本體清：tearDown 會先刪掉暫存資料夾與 PID 檔
+        finally:  # Must clean up inside the test body: tearDown deletes the temp dir and PID file first
             if pid_file.exists():
                 try:
                     os.kill(int(pid_file.read_text()), signal.SIGTERM)
@@ -259,14 +259,14 @@ class Server(Base):
                     pass
 
     def test_loopback_default_also_gets_private_token_and_folder(self):
-        old = os.umask(0o022)  # 在寬鬆的 umask 下測，權限被放寬時才會變紅
+        old = os.umask(0o022)  # Test under a permissive umask, so loosened permissions actually fail
         self.addCleanup(os.umask, old)
         config = inbox.load_config()
         path = Path(os.environ['CLAUDE_INBOX_HOME']) / 'config.json'
         self.assertTrue(config['token'])
         self.assertMode(path, '0o600')
         self.assertMode(path.parent, '0o700')
-        self.assertEqual(inbox.load_config()['token'], config['token'])  # 第二次不重產
+        self.assertEqual(inbox.load_config()['token'], config['token'])  # not regenerated the second time
         qid = self.ask('--title', 't')
         self.answer(qid, choice='', text='x')
         self.assertMode(inbox.events_path(), '0o600')

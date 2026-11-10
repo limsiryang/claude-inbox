@@ -1,6 +1,6 @@
 {
   "name": "inbox",
   "version": "0.1.0",
-  "description": "收件匣：agent 把要你決定的事放進一個網頁，你回答後答案自動回到 agent 手上。另附一份總PM 多工作線操作說明。",
+  "description": "Inbox: the agent puts the things it needs you to decide on a web page, and your answers go straight back to the agent. Ships with a lead PM playbook for running several work streams at once.",
   "license": "MIT"
 }

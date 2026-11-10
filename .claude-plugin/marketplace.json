@@ -1,8 +1,8 @@
 {
   "name": "claude-inbox",
-  "description": "Claude Code 收件匣（繁體中文）",
+  "description": "Claude Code inbox",
   "owner": { "name": "claude-inbox" },
   "plugins": [
-    { "name": "inbox", "source": "./", "description": "收件匣與總PM 操作說明" }
+    { "name": "inbox", "source": "./", "description": "The inbox, plus lead PM instructions" }
   ]
 }

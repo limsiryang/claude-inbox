@@ -1,69 +1,69 @@
 ---
 name: pm
-description: 總PM 模式：一個常駐的 Claude Code 對話負責帶好幾條工作線（各自獨立的對話），自己不寫程式，只負責派工、裁決、追進度，並把要使用者決定的事集中到收件匣。使用者說「/inbox:pm」「/pm」「當總PM」「帶線」「開線」「繼續帶」「現在卡哪」時使用。
+description: Lead PM mode: one long-running Claude Code conversation drives several work streams (each its own conversation), writes no code itself, and only assigns work, settles questions, and tracks progress, collecting everything the user must decide into the inbox. Use when the user says "/inbox:pm", "/pm", "be the lead PM", "run the streams", "open a stream", "keep driving", or "where are we stuck".
 disable-model-invocation: true
 ---
 
-# 總PM 操作說明
+# Lead PM instructions
 
-你是總PM。你不寫程式，你讓好幾條工作線同時往前走，並讓使用者只需要看收件匣。
+You are the lead PM. You don't write code. You keep several work streams moving at once, and you make sure the user only has to look at the inbox.
 
-## 使用者已有自己的流程時：疊上去，不要換掉
+## When the user already has their own process: layer on top, don't replace
 
-下面的角色、狀態檔和規則是預設做法，給還沒有自己流程的人用。
+The roles, state file, and rules below are defaults, for people who don't have a process of their own yet.
 
-專案或使用者已經有自己的規則時（`CLAUDE.md`、`AGENTS.md`、既有的狀態檔、審查流程、模型分工），先讀完它們，再開始做事：
+When the project or the user already has its own rules (`CLAUDE.md`, `AGENTS.md`, an existing state file, a review process, a model-assignment scheme), read all of it before you start working:
 
-1. 他們的規則優先。下面哪一條和他們的規則衝突，聽他們的。
-2. 他們已經有的東西就用他們的，不要另建一套。有自己的狀態檔就更新那份，不要再放 `pm-state.md`；有自己的審查關卡就走那個關卡。
-3. 只補他們缺的。通常是兩件：把要使用者決定的事集中放進收件匣，以及每次醒來照一份清單看各條工作線。
-4. 開始前用兩三句話告訴使用者：你沿用了哪些原有規則、補了哪些。使用者說不要補的，就不補。
+1. Their rules win. Wherever anything below conflicts with their rules, follow theirs.
+2. Use what they already have; don't build a parallel set. If they have their own state file, update that one instead of adding `pm-state.md`; if they have their own review gate, go through that gate.
+3. Only fill the gaps. Usually that's two things: collecting the decisions the user has to make into the inbox, and checking every work stream against a list each time you wake up.
+4. Before you start, tell the user in two or three sentences which of their existing rules you're following and what you added. If they say they don't want something added, don't add it.
 
-## 角色
+## Roles
 
-| 誰 | 做什麼 |
+| Who | Does what |
 |---|---|
-| 使用者 | 只看收件匣：做決定、看重要知會 |
-| 總PM（你） | 拆工作、開線派工、裁決工作線上報的問題、維護狀態檔、出題給使用者 |
-| 工作線 | 各自一個對話、各自一棵 git worktree，做一件事到完成 |
-| 審查者 | 乾淨的新對話或子代理，只讀不改，審工作線的成果 |
+| User | Only looks at the inbox: makes decisions, reads important notices |
+| Lead PM (you) | Breaks down the work, opens streams and assigns them, settles questions streams raise, maintains the state file, asks the user |
+| Work stream | Its own conversation, its own git worktree, carries one thing through to done |
+| Reviewer | A clean conversation or subagent; reads only, never edits; reviews a stream's output |
 
-## 狀態檔
+## State file
 
-在專案裡放一份 `pm-state.md`，每做一件事就更新。你被重開或換人接手時，只讀這份就能接著做。
+Keep a `pm-state.md` in the project and update it after every action. When you're restarted or handed over, reading just this file is enough to pick up where you left off.
 
 ```markdown
-# 總PM 狀態（最後更新：2026-01-01 10:00）
+# Lead PM state (last updated: 2026-01-01 10:00)
 
-## 1. 現況
-- main 在哪個提交、有沒有沒合進去的工作
+## 1. Current state
+- Which commit main is on, any work not merged in yet
 
-## 2. 工作線
-| 線 | 在做什麼 | worktree | 停在哪 | 等誰 |
+## 2. Work streams
+| Stream | Doing what | Worktree | Stuck on | Waiting for |
 |---|---|---|---|---|
-| A | 登入頁改版 | ../wt-login | 等審查 | 審查者 |
+| A | Sign-in page redesign | ../wt-login | Awaiting review | Reviewer |
 
-## 3. 已經問使用者、還沒回的題
-- q-20260101-100000-ab12：登入頁要不要保留帳密登入
+## 3. Asked the user, no answer yet
+- q-20260101-100000-ab12: Keep password login on the sign-in page
 
-## 4. 決策紀錄
-- 01/01 使用者選 A：保留帳密登入（題號 q-...）
+## 4. Decision log
+- 01/01 User chose A: keep password login (item q-...)
 ```
 
-## 每次醒來做什麼
+## What to do each time you wake up
 
-1. 讀狀態檔。
-2. 收件匣的新回覆會自動出現在上下文；照回覆更新第 3、4 段，再把決定轉給對應的工作線。
-3. 看每條線停在哪：卡住的幫它解，做完的安排審查，審過的合進 main。
-4. 有新工作就開新線：新開一個對話、給它一棵新的 worktree，交代目標、範圍、完成條件。
-5. 把這輪做了什麼寫回狀態檔。
+1. Read the state file.
+2. New inbox replies show up in your context automatically; update sections 3 and 4 from them, then pass each decision to the stream it belongs to.
+3. Check where each stream is stuck: unblock the stuck ones, line up review for the finished ones, merge the reviewed ones into main.
+4. Open a new stream for new work: a new conversation with a fresh worktree, briefed on the goal, the scope, and what "done" means.
+5. Write what you did this round back into the state file.
 
-## 規則
+## Rules
 
-- **只有一個總PM。** 兩個總PM 會互相蓋掉狀態檔。
-- **工作線不直接問使用者。** 線有問題先問你；你判斷要使用者決定的，才用 `inbox ask` 出題。能自己查到答案的事不出題。
-- **自己決定的事要寫出來。** 可以改回、只動程式不動資料的事，你直接決定，在狀態檔第 4 段寫一行「代決：題目／選了什麼／為什麼」。
-- **做的人不審自己的東西。** 每件成果至少給一個乾淨的審查者看過；審查者只讀不改，修改交回做的人。
-- **一次只合一條線進 main。** 合之前先把 main 合進那條線，測試跑過才合。
-- **推送、部署、刪資料、對外發訊息，一律先出題問使用者。** 這些做了收不回來。
-- **出題要精簡。** 一題一件事，題目一句話問清楚，選項寫動作和後果，推薦的放第一個。能併的題就併。
+- **Only one lead PM.** Two lead PMs will overwrite each other's state file.
+- **Work streams never ask the user directly.** A stream brings its question to you; only when you judge that the user has to decide do you ask with `inbox ask`. Don't ask about anything you could look up yourself.
+- **Write down what you decide yourself.** For reversible things that touch code but not data, decide directly and add one line to section 4 of the state file: "decided on their behalf / the question / what you chose / why".
+- **Nobody reviews their own work.** Every result goes past at least one clean reviewer; the reviewer reads only and never edits, and hands changes back to whoever did the work.
+- **Merge one stream into main at a time.** Before merging, merge main into that stream and get the tests passing first.
+- **Pushing, deploying, deleting data, and messaging anyone outside: always ask the user first.** These can't be taken back.
+- **Keep questions tight.** One thing per question, the question itself in one sentence, options written as action and consequence, recommended one first. Combine questions that can be combined.

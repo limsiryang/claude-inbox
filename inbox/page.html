@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>收件匣</title>
+    <title>Inbox</title>
     <style>
       :root {
         --bg-0: #101215;
@@ -20,8 +20,8 @@
         --red: #ff6f62;
         --ink: #121417;
         --sans:
-          "PingFang TC", "SF Pro Text", -apple-system, ui-sans-serif,
-          "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+          "SF Pro Text", -apple-system, ui-sans-serif, "Segoe UI",
+          "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
         --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         --r: 10px;
       }
@@ -269,14 +269,14 @@
   </head>
   <body>
     <header>
-      <h1>收件匣</h1>
+      <h1>Inbox</h1>
       <span class="count" id="count"></span>
-      <span class="updated" id="updated">載入中…</span>
+      <span class="updated" id="updated">Loading…</span>
     </header>
     <main id="main"></main>
     <footer>
       <span class="hint" id="ready"></span>
-      <button class="primary" id="send-all" disabled>送出全部已答</button>
+      <button class="primary" id="send-all" disabled>Send all answered</button>
       <span class="err" id="err" role="alert"></span>
     </footer>
     <script>
@@ -370,11 +370,9 @@
           '<span class="tag">' + esc(q.from) + "</span>",
           "<span>" + when(q.created) + "</span>",
         ];
-        if (q.kind === "info") tags.push('<span class="tag info">知會</span>');
+        if (q.kind === "info") tags.push('<span class="tag info">FYI</span>');
         if (q.deadline)
-          tags.push(
-            '<span class="tag due">期限：' + esc(q.deadline) + "</span>",
-          );
+          tags.push('<span class="tag due">Due: ' + esc(q.deadline) + "</span>");
         let html =
           '<article class="card' +
           (open ? "" : " done") +
@@ -408,7 +406,9 @@
                     esc(o.key) +
                     "</span><span>" +
                     esc(o.label) +
-                    (o.recommended ? '<span class="rec">（推薦）</span>' : "") +
+                    (o.recommended
+                      ? '<span class="rec">(recommended)</span>'
+                      : "") +
                     "</span></label>",
                 )
                 .join("") +
@@ -417,27 +417,27 @@
           html +=
             '<textarea data-text placeholder="' +
             (q.kind === "info"
-              ? "有意見可以寫在這裡（選填）"
-              : "補充說明（選填；沒有選項的題目直接寫答案）") +
+              ? "Anything to add? (optional)"
+              : "Notes (optional; if there are no options, write your answer here)") +
             '">' +
             esc(d.text || "") +
             "</textarea>" +
             '<div class="row"><button data-send>' +
-            (q.kind === "info" ? "我知道了" : "這題先送") +
+            (q.kind === "info" ? "Got it" : "Send this one") +
             "</button></div>";
         }
         q.answers.forEach((a) => {
           const pick =
             a.choice === "ack"
-              ? "我知道了"
+              ? "Acknowledged"
               : a.choice
                 ? a.choice + " " + a.choice_label
                 : "";
           html +=
-            '<div class="answer"><div class="who">你在 ' +
+            '<div class="answer"><div class="who">You replied ' +
             when(a.at) +
-            " 回覆 · " +
-            (a.delivered ? "agent 已收到" : "等 agent 來拿") +
+            " · " +
+            (a.delivered ? "agent received it" : "waiting for the agent") +
             "</div>" +
             (pick ? "<div>" + esc(pick) + "</div>" : "") +
             (a.text ? "<div>" + esc(a.text) + "</div>" : "") +
@@ -452,20 +452,21 @@
           .filter((q) => !q.closed && q.answers.length)
           .reverse();
         const closed = STATE.questions.filter((q) => q.closed).reverse();
-        $("count").innerHTML = "待你回 <b>" + open.length + "</b> 題";
+        $("count").innerHTML = "<b>" + open.length + "</b> waiting on you";
         let html =
-          "<h2>待你回答</h2>" +
+          "<h2>Waiting on you</h2>" +
           (open.length
             ? open.map(cardHtml).join("")
-            : '<div class="empty">目前沒有要你回答的事。</div>');
+            : '<div class="empty">Nothing needs your answer right now.</div>');
         if (answered.length)
           html +=
-            "<h2>已回答、等 agent 處理</h2>" + answered.map(cardHtml).join("");
+            "<h2>Answered — waiting for the agent</h2>" +
+            answered.map(cardHtml).join("");
         if (closed.length)
           html +=
-            '<details class="history"><summary>已收起 ' +
+            '<details class="history"><summary>' +
             closed.length +
-            " 題</summary>" +
+            " closed</summary>" +
             closed.map(cardHtml).join("") +
             "</details>";
         $("main").innerHTML = html;
@@ -476,7 +477,7 @@
         const n = STATE.questions.filter(
           (q) => isOpen(q) && q.kind !== "info" && ready(q),
         ).length;
-        $("ready").textContent = n ? "已答 " + n + " 題" : "";
+        $("ready").textContent = n ? n + " answered" : "";
         $("send-all").disabled = n === 0;
       }
 
@@ -489,13 +490,12 @@
           if (!res.ok)
             throw new Error(
               res.status === 401
-                ? "網址少了 token，請用 inbox url 印出的完整網址"
-                : "讀取失敗（" + res.status + "）",
+                ? "The URL is missing its token — use the full URL printed by inbox url"
+                : "Load failed (" + res.status + ")",
             );
           const text = await res.text();
           $("updated").textContent =
-            "更新於 " +
-            new Date().toLocaleTimeString("zh-TW", { hour12: false });
+            "Updated " + new Date().toLocaleTimeString([], { hour12: false });
           $("err").textContent = "";
           if (text === lastJson) return;
           lastJson = text;
@@ -509,7 +509,7 @@
           }
           render();
         } catch (e) {
-          $("updated").textContent = "連不上服務";
+          $("updated").textContent = "Can't reach the server";
           $("err").textContent = e.message;
         }
       }
@@ -531,7 +531,7 @@
           body: JSON.stringify({ answers }),
         });
         if (!res.ok) {
-          $("err").textContent = "送出失敗：" + (await res.text());
+          $("err").textContent = "Send failed: " + (await res.text());
           return;
         }
         ids.forEach((id) => localStorage.removeItem(draftKey(id)));
@@ -575,7 +575,8 @@
           const id = btn.closest(".card").dataset.id;
           const q = STATE.questions.find((x) => x.id === id);
           if (q.kind !== "info" && !ready(q)) {
-            $("err").textContent = "這題還沒選，也沒有寫補充。";
+            $("err").textContent =
+              "Nothing chosen on this one, and no notes written.";
             return;
           }
           send([id]);

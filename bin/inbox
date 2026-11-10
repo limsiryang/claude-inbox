@@ -1,3 +1,3 @@
 #!/bin/sh
-# 收件匣指令入口：plugin 啟用時 Claude Code 會把 bin/ 放進 PATH。
+# Inbox command entry point: Claude Code puts bin/ on PATH when the plugin is enabled.
 exec python3 "$(dirname "$0")/../inbox/inbox.py" "$@"

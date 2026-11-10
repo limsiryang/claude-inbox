@@ -1,55 +1,55 @@
 ---
 name: inbox
-description: 需要使用者做決定、確認或知道某件事，但使用者可能不在對話前時，把問題放進收件匣網頁，而不是在對話裡等。也用在使用者說「放收件匣」「丟到收件匣」「我回來再看」，或要查收件匣有沒有新回覆時。
+description: When the user needs to decide, confirm, or know something but may not be at the conversation, put the question on the inbox web page instead of waiting in the conversation. Also use it when the user says "put it in the inbox", "throw it in the inbox", "I'll look when I'm back", or asks whether the inbox has new replies.
 ---
 
-# 收件匣
+# Inbox
 
-使用者不一定一直盯著每個對話。要他決定的事集中放在收件匣網頁，他有空時一次看完、一次回答。他回答之後，答案會在你下一輪自動出現在上下文裡，開頭是「收件匣：使用者回覆了 N 則」。
+The user is not necessarily watching every conversation. Collect the things they have to decide on the inbox page, so they can read and answer them in one pass when they have time. Once they answer, the answers appear in your context automatically on your next turn, starting with "Inbox: the user replied to N item(s)".
 
-## 什麼時候出題
+## When to ask
 
-- 要他做決定、而且你猜錯的代價比等他回答高：方向選擇、不可逆的動作、改到別人看得到的行為。
-- 要他知道一件事，但不需要他決定：用 `--info`，他按「我知道了」就好。
-- 你自己能從程式、測試或文件查到答案的事，不要出題。
+- They have to decide, and guessing wrong costs more than waiting: direction changes, irreversible actions, changes to behavior other people can see.
+- They need to know something but don't have to decide: use `--info`, and they just press "Got it".
+- Anything you could answer yourself from the code, the tests, or the docs: don't ask.
 
-## 怎麼出題
+## How to ask
 
 ```bash
-inbox ask --title "登入頁要不要保留舊的帳密登入？" \
-  --body "新版改成只用 Google 登入。目前還有 3 個帳號只用帳密登入。" \
-  --option "A=保留帳密登入，兩種並存" \
-  --option "B=只留 Google，通知那 3 個人改用 Google" \
+inbox ask --title "Keep password login on the sign-in page?" \
+  --body "The new version moves to Google sign-in only. 3 accounts still use password login." \
+  --option "A=Keep password login, run both side by side" \
+  --option "B=Google only, tell those 3 people to switch" \
   --recommend A \
-  --deadline "今天 18:00 前"
+  --deadline "by 18:00 today"
 ```
 
-- `--title` 寫成一個問句，不看內文也懂要決定什麼。
-- `--body` 給剛好夠決定的背景，兩三句就好；長內容用 `--body-file`。支援空行分段、`**粗體**`、`` `程式碼` `` 和網址。
-- 每個選項寫「動作和它的後果」。推薦的放第一個並用 `--recommend` 標出來。
-- 沒有選項的題目也可以出，使用者會直接寫答案。
-- 只是知會：`inbox ask --info --title "..." --body "..."`。
+- Write `--title` as a question that makes sense without the body.
+- Give `--body` just enough background to decide, two or three sentences; use `--body-file` for longer content. Blank-line paragraphs, `**bold**`, `` `code` `` and URLs are supported.
+- Write each option as "the action and its consequence". Put the recommended one first and mark it with `--recommend`.
+- Questions with no options are fine too; the user just writes an answer.
+- FYI only: `inbox ask --info --title "..." --body "..."`.
 
-出題後指令會印出題號和網址。第一次出題時會自動在背景起網頁服務。
+After asking, the command prints the question id and the URL. The first question automatically starts the web server in the background.
 
-如果 `inbox` 指令找不到，改用 `python3 "${CLAUDE_PLUGIN_ROOT}/inbox/inbox.py"`，後面參數一樣。
+If the `inbox` command isn't found, use `python3 "${CLAUDE_PLUGIN_ROOT}/inbox/inbox.py"` instead, with the same arguments.
 
-## 專案已有自己的規則時
+## When the project already has its own rules
 
-收件匣只是「問使用者」的管道，不改變該問什麼、誰能決定。
+The inbox is only a channel for asking the user. It does not change what should be asked or who decides.
 
-- 專案的 `CLAUDE.md`、`AGENTS.md` 或其他規則寫了哪些事要先問使用者，照樣問；只是問的地方改成收件匣，不要在對話裡停下來等。
-- 規則寫了哪些事你可以自己決定，照樣自己決定，不要因為有收件匣就多問。
-- 規則和這份說明衝突時，聽專案的規則。
+- If the project's `CLAUDE.md`, `AGENTS.md`, or other rules say which things to ask the user first, keep asking them; just ask in the inbox instead of stopping in the conversation to wait.
+- If the rules say which things you can decide yourself, keep deciding them yourself. Don't ask more just because an inbox exists.
+- When the rules conflict with this document, follow the project's rules.
 
-## 出完題之後
+## After you ask
 
-- 不要在對話裡停下來等。先做不受這題影響的工作。
-- 一定得等答案才能往下時，用 Bash 的背景執行跑 `inbox wait --timeout 1800`。有回覆時它會印出答案並結束，你就會被叫醒。
-- 想手動看有沒有新回覆：`inbox take`。
-- 答案照使用者選的做。他的補充說明比選項文字優先。
-- 處理完一題後跑 `inbox close <題號>`，把它從使用者的畫面收起來。
+- Don't stop in the conversation to wait. Do the work this question doesn't block first.
+- When you genuinely can't proceed without the answer, run `inbox wait --timeout 1800` as a background Bash command. It prints the answer and exits when a reply arrives, which wakes you up.
+- To check for new replies by hand: `inbox take`.
+- Do what the user chose. Their notes take priority over the option text.
+- When an item is done, run `inbox close <id>` to clear it from the user's screen.
 
-## 答案會送到哪個對話
+## Which conversation gets the answer
 
-答案只送回出題的那個對話。那個對話 30 分鐘內沒來拿的話，同一個專案裡的其他對話也拿得到，所以出題的對話結束了也不會掉。每則答案只會送出一次。
+Answers go back only to the conversation that asked. If that conversation hasn't collected within 30 minutes, other conversations in the same project can collect it too, so nothing is lost when the asking conversation ends. Each answer is delivered exactly once.

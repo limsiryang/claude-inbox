@@ -1,190 +1,194 @@
 <div align="center">
 
-# 📥 收件匣
+# 📥 Inbox
 
-### 讓你的 agent 別再停在那邊等你回一句「好」
+### Stop your agent from sitting there waiting for you to say "yeah, do it"
 
-Claude Code 專用的「決定信箱」：agent 要你拍板的事，統一放進一個網頁。<br>
-你有空時一次看完、一次回答，**答案自動回到 agent 手上**。
+A decision mailbox for Claude Code: everything the agent needs you to call goes onto one web page.<br>
+Read them all at once when you have time, answer them all at once, and **the answers go straight back to the agent**.
 
 ![license MIT](https://img.shields.io/badge/license-MIT-green) ![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue) ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)
 
-<img src="docs/demo.gif" alt="示範：在收件匣網頁選答案、寫補充、送出，agent 立刻收到" width="760">
+<img src="docs/demo.gif" alt="Demo: pick an answer on the inbox page, add a note, send, and the agent gets it immediately" width="760">
 
 </div>
 
 ---
 
-## 你是不是也遇過這些事？
+## Sound familiar?
 
-- 讓 agent 跑起來就去吃飯，回來發現它 20 分鐘前就停在「要用 A 還是 B？」
-- 同時開了三個對話，每一個都在問你問題，你得一個一個切過去回
-- 答案打在對話裡，換個對話它就不知道，隔天又得再解釋一次
+- You start the agent and go to lunch, and come back to find it stopped 20 minutes ago on "should I use A or B?"
+- You have three conversations open and every one of them is asking you something, so you switch between them one by one
+- You type the answer into one conversation, another conversation never hears about it, and the next day you explain it all over again
 
-**收件匣把「問你」這件事從對話裡拿出來。** agent 繼續做不需要你的部分，要你決定的事排隊放好，你方便的時候再處理。
-
-<div align="center">
-<img src="docs/flow.png" alt="流程：agent 出題，你在網頁回答，答案自動回到 agent" width="900">
-</div>
-
-## 長這樣
+**The inbox takes "asking you" out of the conversation.** The agent keeps working on the parts that don't need you, the things that do need you queue up, and you handle them when it suits you.
 
 <div align="center">
-<img src="docs/shot-answering.png" alt="收件匣網頁：題目、選項、推薦標記與補充欄" width="760">
+<img src="docs/flow.png" alt="Flow: the agent asks, you answer on the web page, the answer goes back to the agent" width="900">
 </div>
 
-每一題都附上**來源**（哪個專案問的）、**期限**、**推薦選項**和一個補充欄。選好、寫幾句，按「送出全部已答」就好。
+## What it looks like
+
+<div align="center">
+<img src="docs/shot-answering.png" alt="The inbox page: question, options, recommended marker and a notes field" width="760">
+</div>
+
+Every item comes with its **source** (which project asked), a **deadline**, a **recommended option**, and a notes field. Pick one, write a line or two, hit "Send all answered".
 
 <table>
 <tr>
 <td width="62%" valign="top">
-<img src="docs/shot-received.png" alt="送出後，每題顯示「agent 已收到」">
-<p align="center"><sub>送出後看得到每題有沒有被 agent 收走</sub></p>
+<img src="docs/shot-received.png" alt="After sending, each item shows 'agent received it'">
+<p align="center"><sub>After sending, you can see whether the agent has picked each one up</sub></p>
 </td>
 <td width="38%" valign="top">
-<img src="docs/shot-mobile.png" alt="手機版畫面">
-<p align="center"><sub>手機版（寬度 390 的實際畫面）</sub></p>
+<img src="docs/shot-mobile.png" alt="Mobile view">
+<p align="center"><sub>Mobile (an actual 390px-wide screen)</sub></p>
 </td>
 </tr>
 </table>
 
-## 為什麼好用
+> Note: the screenshots above were taken from the original Traditional Chinese build; the interface now ships in English.
+
+## Why it's useful
 
 | | |
 |---|---|
-| **題目集中** | 所有對話的問題在同一個網頁，來源、期限、推薦選項一眼看完，不用切視窗 |
-| **一次回完** | 逐題先送，或一次「送出全部已答」。草稿會自動保存，重新整理也不會掉 |
-| **答案自動回去** | 用 Claude Code 的 hook：你送出後，agent 下一輪開始時答案就已經在它的上下文裡，不用你再貼 |
-| **不叫 AI、不上雲** | 只用 Python 標準庫。題目就是 agent 寫的那一份，資料全部放在你自己的電腦 |
-| **預設安全** | 只開在本機，所有操作都要 token；題目文字一律當純文字顯示，不會被執行 |
-| **手機也能回** | 把位址改成你的 Tailscale 或內網位址，就能在手機上回答（見下方進階說明） |
+| **Everything in one place** | Questions from every conversation on one page — source, deadline and recommended option at a glance, no window switching |
+| **Answer in one pass** | Send item by item, or everything at once with "Send all answered". Drafts save themselves and survive a refresh |
+| **Answers go back by themselves** | Via a Claude Code hook: once you send, the answer is already in the agent's context when its next turn starts. No pasting |
+| **No AI calls, no cloud** | Standard library Python only. The question is exactly what the agent wrote, and all the data stays on your own machine |
+| **Secure by default** | Bound to localhost only, every operation needs a token, and question text is always rendered as plain text, never executed |
+| **Answer from your phone** | Point the address at your Tailscale or LAN address and you can answer from a phone (see the advanced section below) |
 
-## 30 秒開始
+## 30 seconds to start
 
-在 Claude Code 裡輸入：
+In Claude Code, type:
 
 ```
 /plugin marketplace add chenjackle45/claude-inbox
 /plugin install inbox@claude-inbox
 ```
 
-裝好後重開一次 Claude Code，然後對 agent 說：
+Restart Claude Code once after installing, then tell the agent:
 
-> 有要我決定的事，就放進收件匣。
+> If there's anything you need me to decide, put it in the inbox.
 
-就這樣。agent 會自己用 `inbox ask` 出題，並印出網頁網址。想長期生效，把上面那句寫進專案的 `CLAUDE.md`。
+That's it. The agent will use `inbox ask` on its own and print the page URL. To make it stick, put that sentence in your project's `CLAUDE.md`.
 
-**你送出之後，agent 看到的是這樣：**
+**Here's what the agent sees after you send:**
 
 ```
-收件匣：使用者回覆了 2 則。
+Inbox: the user replied to 2 item(s).
 
-【q-20261107-144835-480d】登入頁要不要保留帳密登入？
-使用者選：A 保留帳密登入，兩種並存
-補充：先留著，下個月再看有沒有人還在用。
+[q-20261107-144835-480d] Keep password login on the sign-in page?
+User chose: A Keep password login, run both side by side
+Notes: Leave it for now, check next month whether anyone still uses it.
 
-照回覆繼續做；這件處理完可跑 inbox close <題號> 把它收起來。
+Act on the reply; once the item is done, run inbox close <id> to clear it.
 ```
 
-想自己出一題試試看：
+Want to try asking one yourself:
 
 ```bash
-inbox ask --title "要不要上新版？" --option "A=上" --option "B=不上" --recommend A
+inbox ask --title "Ship the new version?" --option "A=Ship it" --option "B=Hold" --recommend A
 ```
 
-> `inbox` 指令是給 agent 的 Bash 用的。你自己在終端機試的話，改用 `python3 <plugin 資料夾>/inbox/inbox.py`，後面的參數一樣。
+> The `inbox` command is meant for the agent's Bash. To try it from your own terminal, use `python3 <plugin folder>/inbox/inbox.py` instead, with the same arguments.
 
-## 你已經有自己的開發規則？疊上去，不要換掉
+## Already have your own development rules? Layer this on, don't swap it in
 
-收件匣不會動你的 `CLAUDE.md`、`AGENTS.md` 或任何現有流程。它只加三樣東西：一個 `inbox` 指令、一個網頁，和一個在每輪開始時把答案送進 agent 的 hook。
+The inbox doesn't touch your `CLAUDE.md`, your `AGENTS.md`, or any existing process. It adds exactly three things: an `inbox` command, a web page, and a hook that feeds answers to the agent at the start of each turn.
 
-所以你原本的規則照舊：哪些事要先問你、哪些事 agent 可以自己決定，都沒有改變，只是「問你」的地方從對話換成收件匣。想讓 agent 這樣用，把下面這段貼進你的 `CLAUDE.md`：
+So your existing rules stand: what has to be asked and what the agent may decide alone are both unchanged — only the place where you get asked moves from the conversation to the inbox. To get the agent using it this way, paste this into your `CLAUDE.md`:
 
 ```markdown
-## 收件匣
-需要問我的事（照上面的規則本來就要問我的那些），一律用 `inbox ask` 放進收件匣，不要在對話裡停下來等。
-不需要問我的事，照原本的規則自己決定，不要因為有收件匣就多問。
+## Inbox
+Anything you need to ask me (the things the rules above already say to ask me about) goes into the inbox
+via `inbox ask`. Don't stop in the conversation to wait.
+Anything you don't need to ask me about, decide yourself as before. Don't ask more just because an inbox exists.
 ```
 
-沒有自己的規則也沒關係，直接用預設就行。
+If you don't have rules of your own, the defaults are fine as they are.
 
-## 🎁 附贈：總PM 模式
+## 🎁 Bonus: lead PM mode
 
-一個常駐的對話帶好幾條工作線、自己不寫程式，只負責派工、裁決、追進度，而你**只看收件匣**。輸入 `/inbox:pm` 就能看到完整的操作說明，包含狀態檔怎麼寫、什麼事該出題給你、哪些事一定要先問你。
+One long-running conversation drives several work streams, writes no code itself, and only assigns work, settles questions and tracks progress — while you **look at nothing but the inbox**. Type `/inbox:pm` for the full instructions, including how the state file is written, what should be asked of you, and what must always be asked first.
 
-這是給還沒有自己流程的人用的預設做法。你已經有自己的總PM、狀態檔或審查流程時，agent 會沿用你的，只補收件匣那一塊，不會另建一套。
+This is a default for people who don't have a process yet. If you already have your own lead PM, state file, or review process, the agent will follow yours and only fill in the inbox part, not build a second system alongside it.
 
-## 不用 Claude Code 也能用（Codex 等其他 agent）
+## Works without Claude Code too (Codex and other agents)
 
-收件匣的核心是一支 Python 指令加一個網頁，不綁 Claude Code。plugin 只是 Claude Code 專用的打包。其他 agent 能在 shell 裡直接跑同一支指令：
+At its core the inbox is one Python command plus a web page; it isn't tied to Claude Code. The plugin is just the Claude Code packaging. Other agents can run the same command straight from a shell:
 
 ```bash
 git clone https://github.com/chenjackle45/claude-inbox
-python3 claude-inbox/inbox/inbox.py ask --title "要不要上新版？" --option "A=上" --option "B=不上"
-python3 claude-inbox/inbox/inbox.py wait --timeout 1800   # 有回覆時印出答案並結束
+python3 claude-inbox/inbox/inbox.py ask --title "Ship the new version?" --option "A=Ship it" --option "B=Hold"
+python3 claude-inbox/inbox/inbox.py wait --timeout 1800   # prints the answer and exits when a reply arrives
 ```
 
-其他 agent 沒有 Claude Code 的 hook，答案不會自動出現在上下文，要靠它自己跑 `wait` 或 `take` 去拿。把下面這段貼進它的規則檔（例如 `AGENTS.md`），路徑換成你放的位置：
+Other agents don't have the Claude Code hook, so answers won't appear in their context by themselves — they have to run `wait` or `take` to fetch them. Paste this into their rules file (for example `AGENTS.md`), with the path changed to wherever you put it:
 
 ```markdown
-## 收件匣
-需要問我的事，用下面的指令放進收件匣，不要在對話裡停下來等：
+## Inbox
+Anything you need to ask me goes into the inbox with the command below. Don't stop in the conversation to wait:
 python3 /path/to/claude-inbox/inbox/inbox.py ask --title "..." --option "A=..." --option "B=..."
-先做不受這題影響的工作。一定要等答案時，在背景跑 `... inbox.py wait --timeout 1800`。
-處理完一題後跑 `... inbox.py close <題號>`。
+Work on whatever this question doesn't block first. When you really must have the answer,
+run `... inbox.py wait --timeout 1800` in the background.
+Once an item is handled, run `... inbox.py close <id>`.
 ```
 
-兩個限制：
-- 程式靠環境變數 `CLAUDE_CODE_SESSION_ID` 認出題的對話。其他 agent 沒有它，題目會變成匿名，同一個專案資料夾裡的任何 agent 都拿得到答案。兩個 agent 同時在同一個專案出題時，可能拿到對方的答案。
-- 這個用法還沒有拿 Codex 等實際跑過，是依程式行為寫的。
+Two limitations:
+- The program identifies the asking conversation through the `CLAUDE_CODE_SESSION_ID` environment variable. Other agents don't have it, so questions become anonymous and any agent in the same project folder can collect the answer. Two agents asking from the same project at the same time may get each other's answers.
+- This usage hasn't actually been run against Codex or anything similar; it's written from how the program behaves.
 
-## 覺得有用？
+## Find it useful?
 
-按個 ⭐ **Star** 讓更多人看到，也歡迎開 Issue 告訴我哪裡卡住、哪裡想要更好。
+Leave a ⭐ **Star** so more people see it, and feel free to open an issue telling me where you got stuck or what could be better.
 
 ---
 
 <details>
-<summary><b>進階：從手機看、資料放哪、答案送給哪個對話</b></summary>
+<summary><b>Advanced: viewing from a phone, where the data lives, which conversation gets the answer</b></summary>
 
-### 從手機看
+### Viewing from a phone
 
-預設只開在本機。要用手機看，編輯 `~/.claude-inbox/config.json`：
+By default it only binds to localhost. To use it from a phone, edit `~/.claude-inbox/config.json`:
 
 ```json
-{ "host": "你的 Tailscale 或內網位址", "port": 7799 }
+{ "host": "your Tailscale or LAN address", "port": 7799 }
 ```
 
-位址只支援 IPv4。token 不分本機或遠端，第一次使用時自動產生，寫進同一個檔（檔案權限 600，資料夾權限 700）。改位址或換 token 後都要重新啟動服務：`inbox stop` 再 `inbox start`。執行中的服務不會自動套用新設定，舊 token 在它重啟前仍然有效。用 `inbox url` 可以印出帶 token 的完整網址。
+Only IPv4 addresses are supported. The token is the same whether you're local or remote; it's generated on first use and written to the same file (file mode 600, folder mode 700). After changing the address or the token, restart the server: `inbox stop` then `inbox start`. A running server does not pick up new settings on its own, and the old token stays valid until it restarts. `inbox url` prints the full URL including the token.
 
-### 資料放哪
+### Where the data lives
 
-`~/.claude-inbox/`（可用環境變數 `CLAUDE_INBOX_HOME` 改）：
+`~/.claude-inbox/` (change it with the `CLAUDE_INBOX_HOME` environment variable):
 
-| 檔 | 內容 |
+| File | Contents |
 |---|---|
-| `questions/*.json` | 題目，一題一檔 |
-| `events.jsonl` | 你的回答、送達紀錄、收起紀錄，只增不改 |
-| `config.json` | 位址、埠、token |
+| `questions/*.json` | Questions, one file each |
+| `events.jsonl` | Your answers, delivery records and close records; append-only |
+| `config.json` | Address, port, token |
 
-題目與答案都是明文，不要放密碼或金鑰。
+Questions and answers are both plaintext. Don't put passwords or keys in them.
 
-### 答案送給哪個對話
+### Which conversation gets the answer
 
-答案送回出題的那個對話，不管它現在在哪個資料夾。那個對話 30 分鐘內沒來拿，同一個專案（同一個 git 根目錄）裡的其他對話也拿得到。每則答案只送出一次。
+The answer goes back to the conversation that asked, whatever folder it's in now. If that conversation hasn't collected within 30 minutes, other conversations in the same project (the same git root) can collect it too. Each answer is delivered exactly once.
 
-### 安全
+### Security
 
-- 只收 `Host` 與 `Origin` 符合的請求，擋掉別的網頁偷打你的本機服務。
-- 所有 API 都要 token，本機也一樣：答案會被放進 agent 的上下文，不能讓同一台機器上的其他程式隨便寫入。
-- 頁面把題目文字當純文字顯示，只有網址會變成連結。
-- 回答只在你的機器上流動，沒有任何外送。
+- Only accepts requests whose `Host` and `Origin` match, which blocks other web pages from poking at your local server.
+- Every API call needs the token, local ones included: answers go into the agent's context, so other programs on the same machine must not be able to write to it freely.
+- The page renders question text as plain text; only URLs become links.
+- Answers only ever move around on your own machine. Nothing is sent anywhere.
 
-### 需求
+### Requirements
 
-Python 3.9 以上。答案自動送回 agent 需要 Claude Code；其他 agent 的用法見上方。支援 macOS、Linux、WSL 與原生 Windows。沒有其他依賴。
+Python 3.9 or newer. Getting answers back to the agent automatically requires Claude Code; see above for other agents. Runs on macOS, Linux, WSL and native Windows. No other dependencies.
 
-### 開發
+### Development
 
 ```bash
 python3 -m unittest discover tests
@@ -192,6 +196,6 @@ python3 -m unittest discover tests
 
 </details>
 
-## 授權
+## License
 
 MIT
