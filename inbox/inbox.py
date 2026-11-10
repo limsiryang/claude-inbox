@@ -4,7 +4,6 @@
 只用 Python 標準庫（3.9 以上）。資料放在 $CLAUDE_INBOX_HOME（預設 ~/.claude-inbox）。
 """
 import argparse
-import fcntl
 import ipaddress
 import json
 import os
@@ -19,12 +18,73 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+try:  # 檔案鎖：POSIX 用 flock，Windows 沒有 fcntl，改用 msvcrt
+    import fcntl
+    msvcrt = None
+except ImportError:  # Windows
+    fcntl = None
+    import msvcrt
+
+def force_utf8():
+    """Windows 的 stdout 預設跟著系統 ANSI 編碼走，輸出中文會丟 UnicodeEncodeError；
+    導向到檔案或 pipe（hook 就是 pipe）時一定會中。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 HERE = Path(__file__).resolve().parent
 PAGE = HERE / 'page.html'
 DEFAULT_PORT = 7799
 MAX_BODY = 64 * 1024
 MAX_TEXT = 4000
 ORPHAN_SECONDS = 30 * 60  # 提問的 session 30 分鐘沒來拿，同專案其他 session 可以拿
+
+
+# ---------- 檔案鎖 ----------
+
+class FileLock:
+    """跨平台排他鎖。鎖獨立的 .lock 檔、不鎖資料檔本身：Windows 的鎖是強制的，
+    鎖在資料檔上會連正常的讀寫都擋掉。"""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.fd = None
+
+    def acquire(self):
+        self.fd = os.open(str(self.path), os.O_RDWR | os.O_CREAT, 0o600)
+        if fcntl is not None:
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+            return
+        while True:
+            try:
+                msvcrt.locking(self.fd, msvcrt.LK_LOCK, 1)
+                return
+            except OSError:  # LK_LOCK 自己只等十秒，逾時就再排一輪
+                time.sleep(0.1)
+
+    def release(self):
+        if self.fd is None:
+            return
+        try:
+            if fcntl is not None:
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            else:
+                msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+        finally:
+            os.close(self.fd)
+            self.fd = None
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
 
 
 # ---------- 路徑與設定 ----------
@@ -47,8 +107,7 @@ def load_config():
     path = home() / 'config.json'
     config = read_config(path)
     if not config.get('token'):
-        with open(home() / 'config.lock', 'a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with FileLock(home() / 'config.lock'):
             config = read_config(path)  # 搶到鎖後重讀，別人可能已經產生過
             if not config.get('token'):
                 config['token'] = secrets.token_urlsafe(24)
@@ -69,7 +128,15 @@ def write_json(path, data):
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + '.')  # 預設權限 600
     with os.fdopen(fd, 'w', encoding='utf-8') as fh:
         fh.write(json.dumps(data, ensure_ascii=False, indent=2))
-    os.replace(tmp, path)
+    for attempt in range(10):  # Windows：目標檔正被別人開著時 replace 會失敗，等一下再試
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                os.unlink(tmp)
+                raise
+            time.sleep(0.05)
 
 
 def now_iso():
@@ -116,14 +183,19 @@ class EventLog:
     """events.jsonl 的讀寫，全部包在同一把檔案鎖裡。"""
 
     def __enter__(self):
-        fd = os.open(events_path(), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
-        self.fh = os.fdopen(fd, 'a+', encoding='utf-8')
-        fcntl.flock(self.fh, fcntl.LOCK_EX)
+        self.lock = FileLock(home() / 'events.lock')
+        self.lock.acquire()
+        try:
+            fd = os.open(events_path(), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
+            self.fh = os.fdopen(fd, 'a+', encoding='utf-8', newline='\n')  # 兩邊的檔案格式一致
+        except OSError:
+            self.lock.release()  # 開不起來就別把鎖留到行程結束
+            raise
         return self
 
     def __exit__(self, *exc):
-        fcntl.flock(self.fh, fcntl.LOCK_UN)
         self.fh.close()
+        self.lock.release()
 
     def read(self):
         self.fh.seek(0)
@@ -338,10 +410,12 @@ def server_alive(config):
 def ensure_server(config):
     if server_alive(config):
         return True
-    log = open(home() / 'server.log', 'a')
+    log = open(home() / 'server.log', 'a', encoding='utf-8')
+    detach = {'start_new_session': True}
+    if os.name == 'nt':  # Windows 沒有 setsid：用 DETACHED_PROCESS 讓服務脫離這個主控台
+        detach = {'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
     subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'serve'],
-                            stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                            start_new_session=True)
+                     stdin=subprocess.DEVNULL, stdout=log, stderr=log, **detach)
     for _ in range(20):
         time.sleep(0.2)
         if server_alive(config):
@@ -431,12 +505,13 @@ def cmd_stop(args):
     try:
         os.kill(int(pidfile.read_text()), signal.SIGTERM)
         print('已停止')
-    except (ProcessLookupError, ValueError):
+    except (OSError, ValueError):  # Windows 找不到行程是 OSError，不是 ProcessLookupError
         print('服務本來就沒在跑')
     pidfile.unlink()
 
 
 def main(argv=None):
+    force_utf8()
     parser = argparse.ArgumentParser(prog='inbox', description='Claude Code 收件匣')
     sub = parser.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('ask', help='放一題進收件匣')

@@ -19,6 +19,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'inbox'))
 import inbox  # noqa: E402
 
+POSIX_MODES = os.name != 'nt'  # Windows 不套用 POSIX 權限位元，st_mode 一律是 0o666/0o777
 REAL_ENSURE_SERVER = inbox.ensure_server  # Base 會把它換成替身，這裡先留一份真的
 
 
@@ -48,6 +49,10 @@ class Base(unittest.TestCase):
         os.chdir(self.cwd)
         self.env.stop()
         self.tmp.cleanup()
+
+    def assertMode(self, path, expected):
+        if POSIX_MODES:
+            self.assertEqual(oct(Path(path).stat().st_mode & 0o777), expected)
 
     def ask(self, *argv):
         with redirect_stdout(io.StringIO()) as out:
@@ -243,14 +248,14 @@ class Server(Base):
         try:
             with mock.patch.object(inbox, 'ensure_server', REAL_ENSURE_SERVER):
                 self.assertTrue(inbox.ensure_server(config))
-            log = (Path(os.environ['CLAUDE_INBOX_HOME']) / 'server.log').read_text()
+            log = (Path(os.environ['CLAUDE_INBOX_HOME']) / 'server.log').read_text(encoding='utf-8')
             self.assertIn('收件匣服務已啟動', log)
             self.assertNotIn(config['token'], log)
         finally:  # 必須在測試本體清：tearDown 會先刪掉暫存資料夾與 PID 檔
             if pid_file.exists():
                 try:
                     os.kill(int(pid_file.read_text()), signal.SIGTERM)
-                except (ProcessLookupError, ValueError):
+                except (OSError, ValueError):
                     pass
 
     def test_loopback_default_also_gets_private_token_and_folder(self):
@@ -259,13 +264,13 @@ class Server(Base):
         config = inbox.load_config()
         path = Path(os.environ['CLAUDE_INBOX_HOME']) / 'config.json'
         self.assertTrue(config['token'])
-        self.assertEqual(oct(path.stat().st_mode & 0o777), '0o600')
-        self.assertEqual(oct(path.parent.stat().st_mode & 0o777), '0o700')
+        self.assertMode(path, '0o600')
+        self.assertMode(path.parent, '0o700')
         self.assertEqual(inbox.load_config()['token'], config['token'])  # 第二次不重產
         qid = self.ask('--title', 't')
         self.answer(qid, choice='', text='x')
-        self.assertEqual(oct(inbox.events_path().stat().st_mode & 0o777), '0o600')
-        self.assertEqual(oct((path.parent / 'questions').stat().st_mode & 0o777), '0o700')
+        self.assertMode(inbox.events_path(), '0o600')
+        self.assertMode(path.parent / 'questions', '0o700')
 
     def test_non_loopback_host_gets_token_generated(self):
         path = Path(os.environ['CLAUDE_INBOX_HOME']) / 'config.json'
@@ -273,7 +278,7 @@ class Server(Base):
         path.write_text(json.dumps({'host': '100.64.0.1'}))
         config = inbox.load_config()
         self.assertTrue(config['token'])
-        self.assertEqual(oct(path.stat().st_mode & 0o777), '0o600')
+        self.assertMode(path, '0o600')
         self.assertIn('?t=' + config['token'], inbox.page_url(config))
 
 

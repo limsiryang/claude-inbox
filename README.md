@@ -182,7 +182,7 @@ python3 /path/to/claude-inbox/inbox/inbox.py ask --title "..." --option "A=..." 
 
 ### 需求
 
-Python 3.9 以上。答案自動送回 agent 需要 Claude Code；其他 agent 的用法見上方。支援 macOS、Linux 與 WSL（原生 Windows 不支援）。沒有其他依賴。
+Python 3.9 以上。答案自動送回 agent 需要 Claude Code；其他 agent 的用法見上方。支援 macOS、Linux、WSL 與原生 Windows。沒有其他依賴。
 
 ### 開發
 
