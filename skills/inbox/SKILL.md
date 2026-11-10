@@ -32,7 +32,7 @@ inbox ask --title "Keep password login on the sign-in page?" \
 
 After asking, the command prints the question id and the URL. The first question automatically starts the web server in the background.
 
-If the `inbox` command isn't found, use `python3 "${CLAUDE_PLUGIN_ROOT}/inbox/inbox.py"` instead, with the same arguments.
+If the `inbox` command isn't found, run `"${CLAUDE_PLUGIN_ROOT}/inbox/inbox.py"` directly with the same arguments, using the first Python that works: `python3`, then `python`, then `py -3`. On Windows, `python`/`python3` can be Microsoft Store placeholders that only print "Python was not found"; skip those.
 
 ## When the project already has its own rules
 

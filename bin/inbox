@@ -1,3 +1,13 @@
 #!/bin/sh
 # Inbox command entry point: Claude Code puts bin/ on PATH when the plugin is enabled.
-exec python3 "$(dirname "$0")/../inbox/inbox.py" "$@"
+# Try each Python in turn and use the first that actually runs Python 3.9+.
+# A bare `command -v` check is not enough on Windows, where python/python3 may be
+# Microsoft Store placeholders that exist on PATH but only print an install hint.
+script="$(dirname "$0")/../inbox/inbox.py"
+for py in python3 python "py -3"; do
+  if $py -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+    exec $py "$script" "$@"
+  fi
+done
+echo "inbox: no working Python 3.9+ found (tried python3, python, py -3)" >&2
+exit 127
