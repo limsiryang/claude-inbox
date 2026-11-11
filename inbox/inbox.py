@@ -334,12 +334,21 @@ class Handler(BaseHTTPRequestHandler):
             hosts |= {'localhost:%s' % port, '127.0.0.1:%s' % port}
         return hosts
 
+    def public_hosts(self):
+        # Hostnames a reverse proxy or tunnel (e.g. Cloudflare Tunnel) serves the page under over HTTPS.
+        # Listed explicitly in config.json; the token is still required on every API call.
+        hosts = self.config.get('public_hosts') or []
+        if isinstance(hosts, str):
+            hosts = [hosts]
+        return {h.strip().lower() for h in hosts if isinstance(h, str) and h.strip()}
+
     def check(self, api):
         host = self.headers.get('Host', '')
-        if host not in self.allowed_hosts():
+        public = host.lower() in self.public_hosts()
+        if host not in self.allowed_hosts() and not public:
             return self.send_text(403, 'Host mismatch')
         origin = self.headers.get('Origin')
-        if origin and origin != 'http://' + host:
+        if origin and origin != ('https://' if public else 'http://') + host:
             return self.send_text(403, 'Origin mismatch')
         token = self.config.get('token')
         if api and token and not secrets.compare_digest(self.headers.get('X-Inbox-Token', ''), token):

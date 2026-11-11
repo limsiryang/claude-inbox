@@ -204,6 +204,28 @@ class Server(Base):
         self.assertEqual(self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'Z'}]})[0], 400)
         self.assertEqual(inbox.read_events(), [])
 
+    def test_public_host_allowed_over_https_only(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        port = self.start(token='secret-token')
+        inbox.Handler.config['public_hosts'] = ['inbox.example.org']
+        tok = {'X-Inbox-Token': 'secret-token'}
+        pub = dict(tok, Host='inbox.example.org')
+        self.assertEqual(self.req(port, '/', headers={'Host': 'inbox.example.org'})[0], 200)
+        self.assertEqual(self.req(port, '/api/state', headers={'Host': 'inbox.example.org'})[0], 401)
+        self.assertEqual(self.req(port, '/api/state', headers={'Host': 'other.example.org'})[0], 403)
+        self.assertEqual(self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'A'}]},
+                                  headers=dict(pub, Origin='http://inbox.example.org'))[0], 403)
+        self.assertEqual(self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'A'}]},
+                                  headers=dict(pub, Origin='https://evil.example'))[0], 403)
+        self.assertEqual(self.req(port, '/api/answer', {'answers': [{'question_id': qid, 'choice': 'A'}]},
+                                  headers=dict(pub, Origin='https://inbox.example.org'))[0], 200)
+        # The local address keeps working alongside it
+        self.assertEqual(self.req(port, '/api/state', headers=tok)[0], 200)
+
+    def test_public_host_not_allowed_unless_configured(self):
+        port = self.start()
+        self.assertEqual(self.req(port, '/', headers={'Host': 'inbox.example.org'})[0], 403)
+
     def test_token_required_when_configured(self):
         port = self.start(token='secret-token')
         self.assertEqual(self.req(port, '/api/state')[0], 401)

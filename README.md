@@ -161,6 +161,16 @@ By default it only binds to localhost. To use it from a phone, edit `~/.claude-i
 
 Only IPv4 addresses are supported. The token is the same whether you're local or remote; it's generated on first use and written to the same file (file mode 600, folder mode 700). After changing the address or the token, restart the server: `inbox stop` then `inbox start`. A running server does not pick up new settings on its own, and the old token stays valid until it restarts. `inbox url` prints the full URL including the token.
 
+### Behind a tunnel or reverse proxy (e.g. Cloudflare Tunnel)
+
+Keep the server on localhost and point the tunnel at `http://localhost:7799`. Then list the public hostname in `~/.claude-inbox/config.json`, so the server accepts requests addressed to it:
+
+```json
+{ "public_hosts": ["inbox.example.com"] }
+```
+
+Requests for that hostname are only accepted from an `https://` page on it, and every API call still needs the token. Answers go straight into your agents' context, so put an authentication layer in front as well (for example Cloudflare Access limited to your own email). Restart the server after changing this setting.
+
 ### Where the data lives
 
 `~/.claude-inbox/` (change it with the `CLAUDE_INBOX_HOME` environment variable):
