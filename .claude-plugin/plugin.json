@@ -1,6 +1,6 @@
 {
   "name": "inbox",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Inbox: the agent puts the things it needs you to decide on a web page, and your answers go straight back to the agent. Ships with a lead PM playbook for running several work streams at once.",
   "license": "MIT"
 }

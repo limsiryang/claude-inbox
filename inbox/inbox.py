@@ -241,18 +241,25 @@ def build_state(events=None):
             continue
         if e.get('kind') == 'answer':
             q['answers'].append(dict(e, delivered=e['event_id'] in delivered))
-        elif e.get('kind') == 'closed':
+        elif e.get('kind') == 'closed' and not q['closed']:  # The first close is the one that counts
             q['closed'] = True
+            q['closed_at'] = e.get('at')
+            q['resolved_in'] = e.get('resolved_in') or ''
+            q['resolution_note'] = e.get('note') or ''
     items = sorted(questions.values(), key=lambda q: q['created'])
     return {'questions': items}
 
 
-def deliverable(session_id, cwd, events=None):
-    """Answers this session should get and hasn't collected yet."""
+def deliverable(session_id, cwd, events=None, ids=None):
+    """Answers this session should get and hasn't collected yet.
+    A closed item is settled (for example answered in the conversation first), so a late answer to it
+    is never delivered. With ids, only those questions count."""
     project = project_of(cwd)
     now = time.time()
     out = []
     for q in build_state(events)['questions']:
+        if q['closed'] or (ids and q['id'] not in ids):
+            continue
         asker = q.get('session')
         own = bool(asker) and asker == session_id  # This session asked it: whatever folder it's in now
         if not own and q.get('project') != project:
@@ -282,13 +289,17 @@ def format_answers(pairs):
     return '\n'.join(lines)
 
 
-def take(session_id, cwd):
+def take(session_id, cwd, ids=None):
     """Collect answers and mark them delivered; done under one lock, so two sessions never get the same one."""
     with EventLog() as log:
-        pairs = deliverable(session_id, cwd, log.read())
+        pairs = deliverable(session_id, cwd, log.read(), ids)
         log.append([{'event_id': str(uuid.uuid4()), 'kind': 'delivered', 'ref': a['event_id'],
                      'session': session_id, 'at': now_iso()} for _, a in pairs])
     return pairs
+
+
+class AlreadyClosed(ValueError):
+    """The item was settled (closed) before this answer arrived."""
 
 
 def validate_answers(payload, questions):
@@ -300,6 +311,9 @@ def validate_answers(payload, questions):
         q = questions.get(item.get('question_id')) if isinstance(item, dict) else None
         if not q:
             raise ValueError('no such question')
+        if q.get('closed'):
+            where = ' in the %s' % q['resolved_in'] if q.get('resolved_in') else ''
+            raise AlreadyClosed('"%s" was already settled%s; your answer was not sent' % (q['title'], where))
         choice = item.get('choice') or ''
         text = item.get('text') or ''
         if not isinstance(choice, str) or not isinstance(text, str) or len(text) > MAX_TEXT:
@@ -390,11 +404,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_text(413, 'body too large or empty')
         try:
             payload = json.loads(self.rfile.read(length).decode('utf-8'))
-            questions = {q['id']: q for q in load_questions()}
-            events = validate_answers(payload, questions)
         except ValueError as exc:
             return self.send_text(400, str(exc))
+        # Check and store under one lock, so an answer can't slip in after the item was closed
         with EventLog() as log:
+            questions = {q['id']: q for q in build_state(log.read())['questions']}
+            try:
+                events = validate_answers(payload, questions)
+            except AlreadyClosed as exc:
+                return self.send_text(409, str(exc))
+            except ValueError as exc:
+                return self.send_text(400, str(exc))
             log.append(events)
         self.send_text(200, json.dumps({'stored': len(events)}), 'application/json')
 
@@ -467,10 +487,25 @@ def cmd_close(args):
     missing = [i for i in args.ids if i not in ids]
     if missing:
         sys.exit('Not found: ' + ' '.join(missing))
+    extra = {}
+    if args.resolved_in:
+        extra['resolved_in'] = args.resolved_in.strip()[:40]
+    if args.note:
+        extra['note'] = args.note.strip()[:MAX_TEXT]
     with EventLog() as log:
-        log.append([{'event_id': str(uuid.uuid4()), 'kind': 'closed', 'question_id': i,
-                     'at': now_iso()} for i in args.ids])
+        state = {q['id']: q for q in build_state(log.read())['questions']}
+        log.append([dict({'event_id': str(uuid.uuid4()), 'kind': 'closed', 'question_id': i,
+                          'at': now_iso()}, **extra) for i in args.ids])
     print('Closed %d item(s)' % len(args.ids))
+    # First come, first served: if the user had already answered on the page before this close,
+    # say so, so the agent can compare that answer's time with the one it is closing in favour of.
+    for i in args.ids:
+        late = [a for a in state[i]['answers'] if not a['delivered']]
+        for a in late:
+            pick = 'acknowledged' if a.get('choice') == 'ack' else ' '.join(
+                x for x in (a.get('choice'), a.get('choice_label')) if x)
+            print('Note: [%s] was also answered on the inbox page at %s, before this close, and not delivered: %s%s'
+                  % (i, a['at'], pick or '(no option)', (' / Notes: ' + a['text']) if a.get('text') else ''))
 
 
 def cmd_take(args):
@@ -481,12 +516,20 @@ def cmd_take(args):
 def cmd_wait(args):
     deadline = time.time() + args.timeout
     session = os.environ.get('CLAUDE_CODE_SESSION_ID', '')
+    ids = set(args.id or [])
     while time.time() < deadline:
-        if deliverable(session, os.getcwd()):
-            pairs = take(session, os.getcwd())
+        if deliverable(session, os.getcwd(), ids=ids):
+            pairs = take(session, os.getcwd(), ids)
             if pairs:
                 print(format_answers(pairs))
                 return
+        if ids:  # Waiting on specific items: stop once they're all settled some other way
+            state = {q['id']: q for q in build_state()['questions']}
+            if all(i not in state or state[i]['closed'] for i in ids):
+                for i in sorted(ids):
+                    where = state[i].get('resolved_in') if i in state else ''
+                    print('Inbox: [%s] was closed without an inbox answer%s.' % (i, ' (resolved in %s)' % where if where else ''))
+                sys.exit(3)
         time.sleep(3)
     print('Inbox: waited %d seconds, no new replies.' % args.timeout)
     sys.exit(2)
@@ -507,7 +550,8 @@ def cmd_list(args):
     for q in build_state()['questions']:
         if q['closed'] and not args.all:
             continue
-        status = 'closed' if q['closed'] else ('answered' if q['answers'] else 'waiting')
+        status = ('closed' + (' (resolved in %s)' % q['resolved_in'] if q.get('resolved_in') else '')
+                  if q['closed'] else ('answered' if q['answers'] else 'waiting'))
         print('%s  %s  %s  (%s)' % (q['id'], status, q['title'], q['from']))
 
 
@@ -541,9 +585,12 @@ def main(argv=None):
     p.set_defaults(func=cmd_take)
     p = sub.add_parser('wait', help='block until a new reply arrives')
     p.add_argument('--timeout', type=int, default=1800)
+    p.add_argument('--id', action='append', help='wait only for this item (repeatable); exits 3 once all are closed')
     p.set_defaults(func=cmd_wait)
     p = sub.add_parser('close', help='clear questions that are done')
     p.add_argument('ids', nargs='+')
+    p.add_argument('--resolved-in', help='where it was settled, e.g. "conversation"; shown on the page')
+    p.add_argument('--note', help='what was decided, shown on the page')
     p.set_defaults(func=cmd_close)
     p = sub.add_parser('list', help='list questions')
     p.add_argument('--all', action='store_true')

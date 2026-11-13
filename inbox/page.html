@@ -426,6 +426,14 @@
             (q.kind === "info" ? "Got it" : "Send this one") +
             "</button></div>";
         }
+        if (q.closed && q.resolved_in)
+          html +=
+            '<div class="answer"><div class="who">Settled in the ' +
+            esc(q.resolved_in) +
+            (q.closed_at ? " " + when(q.closed_at) : "") +
+            "</div>" +
+            (q.resolution_note ? "<div>" + esc(q.resolution_note) + "</div>" : "") +
+            "</div>";
         q.answers.forEach((a) => {
           const pick =
             a.choice === "ack"
@@ -531,7 +539,20 @@
           body: JSON.stringify({ answers }),
         });
         if (!res.ok) {
-          $("err").textContent = "Send failed: " + (await res.text());
+          const msg = await res.text();
+          $("err").textContent = (res.status === 409 ? "" : "Send failed: ") + msg;
+          if (res.status === 409) {
+            // Settled elsewhere first (e.g. in the conversation). Nothing in this batch was stored:
+            // drop drafts only for the closed items, keep the rest so they can be sent again.
+            lastJson = "";
+            await load();
+            ids
+              .filter((id) => (STATE.questions.find((x) => x.id === id) || {}).closed)
+              .forEach((id) => localStorage.removeItem(draftKey(id)));
+            render();
+            $("err").textContent =
+              msg + (ids.length > 1 ? " Nothing in this batch was sent; send the others again." : "");
+          }
           return;
         }
         ids.forEach((id) => localStorage.removeItem(draftKey(id)));

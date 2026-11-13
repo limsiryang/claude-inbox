@@ -166,6 +166,89 @@ class Delivery(Base):
         self.assertTrue(inbox.build_state()['questions'][0]['closed'])
 
 
+class FirstComeFirstServed(Base):
+    """A question asked in both the conversation and the inbox: whichever is answered first wins."""
+
+    def close(self, *argv):
+        with redirect_stdout(io.StringIO()) as out:
+            inbox.main(['close'] + list(argv))
+        return out.getvalue()
+
+    def wait(self, *argv):
+        with redirect_stdout(io.StringIO()) as out:
+            try:
+                inbox.main(['wait', '--timeout', '2'] + list(argv))
+                code = 0
+            except SystemExit as e:
+                code = e.code
+        return code, out.getvalue()
+
+    def test_close_records_where_it_was_resolved(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        out = self.close(qid, '--resolved-in', 'conversation', '--note', 'Went with A')
+        self.assertEqual(out.strip(), 'Closed 1 item(s)')
+        q = inbox.build_state()['questions'][0]
+        self.assertEqual((q['resolved_in'], q['resolution_note']), ('conversation', 'Went with A'))
+        with redirect_stdout(io.StringIO()) as listing:
+            inbox.main(['list', '--all'])
+        self.assertIn('closed (resolved in conversation)', listing.getvalue())
+
+    def test_second_close_does_not_overwrite_the_first(self):
+        qid = self.ask('--title', 't')
+        self.close(qid, '--resolved-in', 'conversation')
+        self.close(qid)
+        self.assertEqual(inbox.build_state()['questions'][0]['resolved_in'], 'conversation')
+
+    def test_closed_item_rejects_new_answers(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        self.close(qid, '--resolved-in', 'conversation')
+        qs = {q['id']: q for q in inbox.build_state()['questions']}
+        with self.assertRaises(inbox.AlreadyClosed) as ctx:
+            inbox.validate_answers({'answers': [{'question_id': qid, 'choice': 'A'}]}, qs)
+        self.assertIn('settled in the conversation', str(ctx.exception))
+
+    def test_answer_left_on_a_closed_item_is_never_delivered_and_close_reports_it(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        self.answer(qid, 'A', 'from the page')  # The page answer landed first...
+        out = self.close(qid, '--resolved-in', 'conversation')  # ...then the agent closed it for a chat reply
+        self.assertIn('was also answered on the inbox page', out)
+        self.assertIn('A first / Notes: from the page', out)
+        self.assertEqual(inbox.take('sess-1', str(self.project)), [])  # and the hook won't deliver it later
+
+    def test_close_after_delivery_reports_nothing_extra(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        self.answer(qid)
+        inbox.take('sess-1', str(self.project))
+        self.assertNotIn('Note:', self.close(qid))
+
+    def test_wait_id_takes_only_that_item(self):
+        q1 = self.ask('--title', 'one', '--option', 'A=first')
+        q2 = self.ask('--title', 'two', '--option', 'A=first')
+        self.answer(q1)
+        self.answer(q2)
+        code, out = self.wait('--id', q1)
+        self.assertEqual(code, 0)
+        self.assertIn('[%s]' % q1, out)
+        self.assertNotIn('[%s]' % q2, out)
+        self.assertEqual([q['id'] for q, _ in inbox.take('sess-1', str(self.project))], [q2])  # left for later
+
+    def test_wait_id_exits_3_once_the_item_is_closed(self):
+        qid = self.ask('--title', 't', '--option', 'A=first')
+        self.close(qid, '--resolved-in', 'conversation')
+        code, out = self.wait('--id', qid)
+        self.assertEqual(code, 3)
+        self.assertIn('closed without an inbox answer (resolved in conversation)', out)
+
+    def test_wait_id_keeps_waiting_while_any_item_is_open(self):
+        q1 = self.ask('--title', 'one', '--option', 'A=first')
+        q2 = self.ask('--title', 'two', '--option', 'A=first')
+        self.close(q1)
+        with mock.patch.object(inbox.time, 'sleep'):  # Don't actually sleep; the 2 s deadline still ends it
+            code, out = self.wait('--id', q1, '--id', q2)
+        self.assertEqual(code, 2)
+        self.assertIn('no new replies', out)
+
+
 class Server(Base):
     def start(self, host='127.0.0.1', token=''):
         port = free_port()
@@ -194,6 +277,20 @@ class Server(Base):
         self.assertEqual((code, json.loads(body)), (200, {'stored': 1}))
         state = json.loads(self.req(port, '/api/state')[1])
         self.assertEqual(state['questions'][0]['answers'][0]['choice'], 'A')
+
+    def test_answer_to_closed_item_gets_409_and_stores_nothing(self):
+        q1 = self.ask('--title', 'settled in chat', '--option', 'A=first')
+        q2 = self.ask('--title', 'still open', '--option', 'A=first')
+        with redirect_stdout(io.StringIO()):
+            inbox.main(['close', q1, '--resolved-in', 'conversation'])
+        port = self.start()
+        code, body = self.req(port, '/api/answer', {'answers': [{'question_id': q2, 'choice': 'A'},
+                                                                {'question_id': q1, 'choice': 'A'}]})
+        self.assertEqual(code, 409)
+        self.assertIn('settled in the conversation', body)
+        state = {q['id']: q for q in json.loads(self.req(port, '/api/state')[1])['questions']}
+        self.assertEqual(state[q2]['answers'], [])  # The whole batch was refused, not half of it
+        self.assertEqual(state[q1]['resolved_in'], 'conversation')
 
     def test_bad_host_origin_and_invalid_answer_rejected(self):
         qid = self.ask('--title', 't', '--option', 'A=first')

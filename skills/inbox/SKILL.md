@@ -50,6 +50,22 @@ The inbox is only a channel for asking the user. It does not change what should 
 - Do what the user chose. Their notes take priority over the option text.
 - When an item is done, run `inbox close <id>` to clear it from the user's screen.
 
+## Asking in both places (first come, first served)
+
+Use this when the user may be at the conversation or away from it, or when their rules say to ask in both places.
+
+1. Run `inbox ask ...` and note the id it prints.
+2. Start `inbox wait --id <id> --timeout 3600` as a background Bash command. It returns only for that item.
+3. Ask the same question in the conversation and mention the id, for example "(also in the inbox as q-…)". Then end your turn.
+4. Whichever answer reaches you first is the decision:
+   - **The background wait returns with an answer.** Act on it. Say in the conversation that it was answered in the inbox, then `inbox close <id>` once it's done. If the user replies in the conversation later, treat that as a new instruction, not as a second answer to compare.
+   - **The user answers in the conversation first.** Stop the background wait, then run `inbox close <id> --resolved-in conversation --note "<what was decided>"`. The page then locks the item and shows it as settled in the conversation, and any later page answer is refused.
+5. If `close` prints `Note: … was also answered on the inbox page at <time>`, the page answer got in before your close. Compare that time with when the user's conversation message arrived:
+   - **The page answer is earlier:** it is the decision.
+   - **The chat answer is earlier:** the chat answer stands.
+   - **The two answers differ:** tell the user in one line which one you went with.
+6. If the wait times out (exit 2) and the item is still open, start it again, at most twice. After that the reply arrives through the hook the next time the user types. If the wait exits with code 3, the item was closed some other way; stop waiting.
+
 ## Which conversation gets the answer
 
 Answers go back only to the conversation that asked. If that conversation hasn't collected within 30 minutes, other conversations in the same project can collect it too, so nothing is lost when the asking conversation ends. Each answer is delivered exactly once.
